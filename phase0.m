@@ -124,3 +124,67 @@ xlabel('Frequency (Hz)'); ylabel('Magnitude (dB)');
 title('Zoom, 0 to 1 kHz'); legend(names);
 
 save('phase0_data.mat', 'A', 'B', 'fr');
+%% ---------------- Q4: pitch of a 50 ms voiced segment ----------------
+q4_showMarks = false;      % false = clean plots; true = mark the harmonic peaks used (to check)
+
+segStart = [66.600, 173.075];                    % start time of each segment (s): A, B
+Lseg = round(0.05 * fr);                         % 50 ms in samples
+Nfft = 2^16;                                     % zero-padding for a smoother spectrum
+w    = 0.5 - 0.5*cos(2*pi*(0:Lseg-1)'/(Lseg-1)); % Hann window
+tms  = (0:Lseg-1)' / fr * 1000;                  % time axis in ms
+fq   = (0:Nfft/2)' * fr / Nfft;                  % frequency axis in Hz
+F0a  = zeros(1,2);                               % F0 from the period of the waveform
+F0b  = zeros(1,2);                               % F0 from the spacing of the harmonics
+
+figure;
+for i = 1:2
+    n0  = round(segStart(i) * fr) + 1;
+    seg = x{i}(n0 : n0 + Lseg - 1);
+
+    % ---- (a) period of the waveform ----
+    % The period is the time shift at which the waveform best matches itself
+    % (autocorrelation). We search for it between 70 Hz and 300 Hz.
+    s  = seg - mean(seg);
+    r  = real(ifft(abs(fft(s, 2*Lseg)).^2));     % r(lag+1) = similarity at that lag
+    lagMin = round(fr/300);
+    lagMax = round(fr/70);
+    [~, k] = max(r(lagMin+1 : lagMax+1));
+    lag = lagMin + k - 1;
+    y1 = r(lag);  y2 = r(lag+1);  y3 = r(lag+2);
+    lagRef = lag + 0.5*(y1 - y3)/(y1 - 2*y2 + y3);   % sharper peak position
+    T0     = lagRef / fr;                            % period in s
+    F0a(i) = 1 / T0;
+
+    % ---- (b) spacing of the harmonics ----
+    S   = fft(seg .* w, Nfft);
+    SdB = 20*log10(2*abs(S(1:Nfft/2+1)) / sum(w) + eps);
+
+    K  = floor(1000 / F0a(i));                   % harmonics below 1 kHz
+    hk = (1:K)';                                 % harmonic numbers 1, 2, 3, ...
+    hf = zeros(K,1);                             % their frequencies
+    idx = zeros(K,1);
+    for m = 1:K
+        win = find(fq > (m-0.4)*F0a(i) & fq < (m+0.4)*F0a(i));   % look near m*F0
+        [~, j] = max(SdB(win));                  % highest point = the harmonic peak
+        idx(m) = win(j);
+        hf(m)  = fq(idx(m));
+    end
+    c      = polyfit(hk, hf, 1);                 % straight line: frequency = F0 * number
+    F0b(i) = c(1);                               % its slope is the spacing = F0
+
+    fprintf('%s: (a) T0 = %.3f ms -> F0 = %.1f Hz | (b) harmonic spacing F0 = %.1f Hz\n', ...
+            names{i}, T0*1000, F0a(i), F0b(i));
+
+    % ---- plots (no data cursor labels) ----
+    subplot(2,2,2*i-1);
+    plot(tms, seg, colors{i}); grid on;
+    xlabel('Time (ms)'); ylabel('Amplitude');
+    title(sprintf('%s: 50 ms segment, T_0 = %.2f ms', names{i}, T0*1000));
+
+    subplot(2,2,2*i);
+    plot(fq, SdB, colors{i}); grid on; xlim([0 1500]); hold on;
+    if q4_showMarks, plot(fq(idx), SdB(idx), 'ko'); end  %#ok<UNRCH>
+    xlabel('Frequency (Hz)'); ylabel('Magnitude (dB)');
+    title(sprintf('%s: spectrum, F_0 = %.1f Hz', names{i}, F0b(i)));
+end
+saveas(gcf, 'Q4_pitch.png');                     % saves the figure in the script's folder
