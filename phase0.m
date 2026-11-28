@@ -1,5 +1,4 @@
-
-% Phase 0: Q1, Q2, Q3 
+% Phase 0: Q1 to Q5
 clear; 
 close all; 
 clc;
@@ -123,7 +122,6 @@ subplot(2,1,2); grid on; xlim([0 1000]);
 xlabel('Frequency (Hz)'); ylabel('Magnitude (dB)');
 title('Zoom, 0 to 1 kHz'); legend(names);
 
-save('phase0_data.mat', 'A', 'B', 'fr');
 %% ---------------- Q4: pitch of a 50 ms voiced segment ----------------
 q4_showMarks = false;      % false = clean plots; true = mark the harmonic peaks used (to check)
 
@@ -188,3 +186,37 @@ for i = 1:2
     title(sprintf('%s: spectrum, F_0 = %.1f Hz', names{i}, F0b(i)));
 end
 saveas(gcf, 'Q4_pitch.png');                     % saves the figure in the script's folder
+%% ---------------- Q5: cumulative energy E(f) ----------------
+figure; hold on; grid on;
+h = zeros(1,2);
+for i = 1:2
+    N    = length(x{i});
+    P    = abs(fft(x{i})).^2;                  % energy of every frequency bin
+    half = floor(N/2) + 1;                     % bins from 0 Hz to fr/2
+    wt   = 2 * ones(half, 1);                  % each positive bin also stands for its negative twin
+    wt(1) = 1;                                 % 0 Hz has no twin
+    if mod(N,2) == 0, wt(end) = 1; end         % neither does fr/2
+    E    = 100 * cumsum(wt .* P(1:half)) / sum(P);     % cumulative energy in %
+    f    = (0 : half-1)' * fr / N;             % frequency of each bin in Hz
+
+    % the numbers asked for
+    f99   = f(find(E >= 99, 1));               % frequency below which 99 % of the energy lies
+    k34   = round(3400 * N / fr) + 1;          % bin number of 3.4 kHz
+    k4    = round(4000 * N / fr) + 1;          % bin number of 4 kHz
+    fprintf('%s: 99%% of the energy is below %.0f Hz\n', names{i}, f99);
+    fprintf('%s: energy above 3.4 kHz = %.2f %%, above 4 kHz = %.2f %%\n', names{i}, 100-E(k34), 100-E(k4));
+    fprintf('%s: check, E at fr/2 = %.4f %%\n', names{i}, E(end));
+
+    % plot (only 2000 log-spaced points, otherwise the plot is very slow)
+    kStart = ceil(50 * N / fr) + 1;
+    pick   = unique(round(logspace(log10(kStart), log10(half), 2000)));
+    h(i)   = plot(f(pick), E(pick), colors{i}, 'LineWidth', 1.5);
+end
+set(gca, 'XScale', 'log');
+plot([3400 3400], [0 100], 'k--');  text(3400, 8, ' 3.4 kHz');
+plot([4000 4000], [0 100], 'k:');   text(4000, 18, ' 4 kHz');
+xlim([50 fr/2]); ylim([0 100]);
+xlabel('Frequency f (Hz)'); ylabel('E(f) (%)');
+title('Cumulative energy'); legend(h, names, 'Location', 'southeast');
+saveas(gcf, 'Q5_energy.png');
+save('phase0_data.mat', 'A', 'B', 'fr');
